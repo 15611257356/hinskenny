@@ -10,6 +10,31 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <canvas id="fx" aria-hidden="true"></canvas>
+
+  <div class="intro" id="intro">
+    <div class="intro-inner">
+      <p class="eyebrow">Hins Cheung × Kenny Kwan</p>
+      <h1 class="shimmer">相敬如斌</h1>
+      <p class="intro-line">“因为我不知道，下一辈子还是否能遇见你”</p>
+      <button class="intro-btn" id="intro-enter">♪ 伴着《只是太爱你》进入</button>
+      <button class="intro-quiet" id="intro-quiet">静音进入</button>
+    </div>
+  </div>
+
+  <aside class="music" id="music">
+    <button class="disc" id="music-toggle" aria-label="背景音乐"><span>♪</span></button>
+    <div class="music-panel" id="music-panel">
+      <div class="music-head">
+        <strong>只是太爱你</strong>
+        <button class="music-min" id="music-min" aria-label="收起">–</button>
+      </div>
+      <div class="music-tabs" id="music-tabs"></div>
+      <div class="music-frame" id="music-frame"></div>
+      <p class="music-note" id="music-note"></p>
+    </div>
+  </aside>
+
   <nav class="nav">
     <a href="#top" class="brand">相敬如斌</a>
     <div class="links">
@@ -25,7 +50,7 @@
     <div class="hero-photos" id="hero-photos"></div>
     <div class="hero-text">
       <p class="eyebrow">Hins Cheung × Kenny Kwan</p>
-      <h1>相敬如斌</h1>
+      <h1 class="shimmer">相敬如斌</h1>
       <p class="lede">“公事上嘅同事，私人生活係出生入死嘅战友。”</p>
       <p class="lede-src">—— 张敬轩，2021</p>
       <a class="cta" href="#sugar">去吃糖</a>
@@ -74,5 +99,7 @@
   <script src="data.js"></script>
   <script src="credits.js"></script>
   <script src="app.js"></script>
+  <script src="music.js"></script>
+  <script src="effects.js"></script>
 </body>
 </html>

@@ -3,6 +3,28 @@
 // photos 只放有授权的照片（Wikimedia Commons 等），或你自己拍的照片。
 
 window.SITE = {
+  // 背景音乐。第一首在点击“进入”时自动播放；source 是出处链接。
+  music: [
+    {
+      label: "2010 原始 Demo",
+      note: "编曲 Johnny Yim 2026.05 在 Threads 分享：“找舊file無意翻出2010年皇上《只是太愛你》的最原始Demo”",
+      bv: "BV1CvRJBaEFN",
+      source: "https://www.threads.com/@johnnyyim",
+    },
+    {
+      label: "正式版 MV",
+      note: "环球唱片官方 MV（YouTube，国内可能打不开）",
+      youtube: "k2rVffhNd0E",
+      source: "https://www.youtube.com/watch?v=k2rVffhNd0E",
+    },
+    {
+      label: "现场版",
+      note: "《只是太爱你》现场（B 站 4K 修复）",
+      bv: "BV1ZP4y1K7Wf",
+      source: "https://www.bilibili.com/video/BV1ZP4y1K7Wf/",
+    },
+  ],
+
   people: [
     {
       id: "hins",
