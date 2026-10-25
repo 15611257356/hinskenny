@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="referrer" content="no-referrer" />
+  <title>相敬如斌 · HinsKenny</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;900&family=Noto+Sans+SC:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <nav class="nav">
+    <a href="#top" class="brand">相敬如斌</a>
+    <div class="links">
+      <a href="#people">两个人</a>
+      <a href="#story">故事</a>
+      <a href="#sugar">糖点</a>
+      <a href="#gallery">相册</a>
+      <a href="#credits">出处</a>
+    </div>
+  </nav>
+
+  <header class="hero" id="top">
+    <div class="hero-photos" id="hero-photos"></div>
+    <div class="hero-text">
+      <p class="eyebrow">Hins Cheung × Kenny Kwan</p>
+      <h1>相敬如斌</h1>
+      <p class="lede">“公事上嘅同事，私人生活係出生入死嘅战友。”</p>
+      <p class="lede-src">—— 张敬轩，2021</p>
+      <a class="cta" href="#sugar">去吃糖</a>
+    </div>
+  </header>
+
+  <section id="people" class="section">
+    <h2>两个人</h2>
+    <div class="people" id="people-list"></div>
+  </section>
+
+  <section id="story" class="section">
+    <h2>二十多年，慢慢讲</h2>
+    <ol class="timeline" id="timeline"></ol>
+  </section>
+
+  <section id="sugar" class="section dark">
+    <h2>糖点合集</h2>
+    <p class="hint">点封面直接在这里播放 B 站视频，视频版权归原作者与上传者。</p>
+    <div class="sugars" id="sugars"></div>
+  </section>
+
+  <section id="gallery" class="section">
+    <h2>相册</h2>
+    <p class="hint">以下照片均来自 Wikimedia Commons，按各自授权使用，点开可看作者。</p>
+    <div class="gallery" id="gallery-grid"></div>
+  </section>
+
+  <section id="credits" class="section">
+    <h2>出处与说明</h2>
+    <p class="note">
+      本站是粉丝向整理。“相敬如斌”是 CP 粉的解读，两位本人从未公开确认恋爱关系；时间线里的引语来自公开报道，其余是粉丝视角的叙述。
+    </p>
+    <h3>报道与资料</h3>
+    <ul id="source-list"></ul>
+    <h3>照片授权</h3>
+    <ul id="credit-list" class="credits"></ul>
+  </section>
+
+  <div class="lightbox" id="lightbox" hidden>
+    <button class="close" aria-label="关闭">×</button>
+    <img alt="" />
+    <p class="lb-caption"></p>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="credits.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
