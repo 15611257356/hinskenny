@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>HinsKenny 内容工作台</title>
+  <link rel="stylesheet" href="studio.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="工作台导航">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">HK</span>
+        <div>
+          <strong>HinsKenny</strong>
+          <span>Content Studio</span>
+        </div>
+      </div>
+
+      <div class="nav-label">素材板块</div>
+      <nav class="module-tabs" id="module-tabs" aria-label="内容板块"></nav>
+
+      <div class="sidebar-foot">
+        <span class="connection-dot" aria-hidden="true"></span>
+        <span class="connection" id="connection-status">正在连接…</span>
+      </div>
+    </aside>
+
+    <div class="main-shell">
+      <header class="topbar">
+        <div class="page-identity">
+          <p class="eyebrow">内容运营台</p>
+          <h1>素材与内容</h1>
+        </div>
+        <div class="top-actions">
+          <button class="btn quiet" id="reload-btn" type="button">重新载入</button>
+          <button class="btn" id="save-btn" type="button">保存草稿</button>
+          <button class="btn" id="validate-btn" type="button">内容检查</button>
+          <button class="btn" id="preview-btn" type="button">主站预览</button>
+          <button class="btn primary" id="publish-btn" type="button">发布</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+      <section class="list-pane" aria-label="内容列表">
+        <div class="section-intro">
+          <div>
+            <p class="section-kicker">当前板块</p>
+            <h2 id="module-title">时间线</h2>
+            <p id="module-description">整理事件、日期、媒体与来源。</p>
+          </div>
+          <span class="record-count" id="visible-count">0 条</span>
+        </div>
+
+        <div class="status-tabs" id="status-tabs" aria-label="状态筛选">
+          <button class="status-tab active" data-status="all" type="button">全部 <span id="count-all">0</span></button>
+          <button class="status-tab" data-status="draft" type="button">草稿 <span id="count-draft">0</span></button>
+          <button class="status-tab" data-status="needs-source" type="button">待补出处 <span id="count-needs-source">0</span></button>
+          <button class="status-tab" data-status="published" type="button">已发布 <span id="count-published">0</span></button>
+        </div>
+
+        <div class="list-toolbar">
+          <label class="search-field">
+            <span class="sr-only">搜索当前板块</span>
+            <input id="search-input" type="search" placeholder="搜索标题、日期、BV 号或路径…" />
+          </label>
+          <button class="btn add-btn" id="add-btn" type="button">新增</button>
+        </div>
+
+        <div class="table-wrap">
+          <table class="content-table">
+            <thead id="table-head"></thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+
+        <div class="empty-state" id="empty-state" hidden>
+          <strong>没有符合条件的内容</strong>
+          <p>可以清除搜索条件，或者新增一条素材。</p>
+        </div>
+      </section>
+
+      <aside class="editor-pane" id="editor-pane" aria-label="内容编辑器">
+        <div class="editor-placeholder" id="editor-placeholder">
+          <strong>选择一行开始编辑</strong>
+          <p>表格负责快速浏览，详细字段会在这里按子标签显示。</p>
+        </div>
+
+        <div id="editor-content" hidden>
+          <div class="editor-head">
+            <div>
+              <p class="editor-kind" id="editor-kind"></p>
+              <h2 id="editor-title">编辑内容</h2>
+            </div>
+            <div class="editor-head-actions">
+              <span class="unsaved" id="unsaved-badge" hidden>未保存</span>
+              <button class="icon-btn editor-close" id="close-editor-btn" type="button" aria-label="关闭编辑器">×</button>
+            </div>
+          </div>
+
+          <nav class="field-tabs" id="field-tabs" aria-label="字段分组"></nav>
+          <form id="editor-form" novalidate></form>
+
+          <div class="editor-actions">
+            <div class="order-actions">
+              <button class="btn small" id="move-up-btn" type="button">上移</button>
+              <button class="btn small" id="move-down-btn" type="button">下移</button>
+              <button class="btn small" id="duplicate-btn" type="button">复制</button>
+            </div>
+            <button class="btn danger" id="delete-btn" type="button">删除</button>
+          </div>
+        </div>
+      </aside>
+      </main>
+    </div>
+  </div>
+
+  <dialog class="validation-dialog" id="validation-dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow">发布前检查</p>
+        <h2>内容校验结果</h2>
+      </div>
+      <button class="icon-btn" id="close-validation-btn" type="button" aria-label="关闭">×</button>
+    </div>
+    <div id="validation-summary"></div>
+    <div class="validation-list" id="validation-list"></div>
+    <div class="dialog-actions">
+      <button class="btn" id="close-validation-footer-btn" type="button">关闭</button>
+    </div>
+  </dialog>
+
+  <dialog class="confirm-dialog" id="confirm-dialog">
+    <h2 id="confirm-title">确认操作</h2>
+    <p id="confirm-message"></p>
+    <div class="dialog-actions">
+      <button class="btn" id="confirm-cancel-btn" type="button">取消</button>
+      <button class="btn primary" id="confirm-ok-btn" type="button">确认</button>
+    </div>
+  </dialog>
+
+  <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+  <input id="asset-upload-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden />
+
+  <script src="schemas.js"></script>
+  <script src="studio.js"></script>
+</body>
+</html>
