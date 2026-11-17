@@ -22,8 +22,23 @@ a { color: var(--wine); }
   border-bottom: 1px solid rgba(29, 20, 22, 0.08);
 }
 .brand { font-family: var(--serif); font-weight: 900; font-size: 1.2rem; color: var(--wine); text-decoration: none; }
+.nav-actions { display: flex; align-items: center; gap: 1.4rem; }
 .links a { margin-left: 1.4rem; color: var(--ink); text-decoration: none; font-size: 0.95rem; }
 .links a:hover { color: var(--wine); }
+.studio-link {
+  min-height: 2.35rem;
+  display: inline-flex; align-items: center; gap: 0.55rem;
+  padding: 0.45rem 0.72rem 0.45rem 0.85rem;
+  border: 1px solid rgba(122, 31, 43, 0.28); border-radius: 4px;
+  background: rgba(255, 255, 255, 0.32); color: var(--wine);
+  font-size: 0.84rem; font-weight: 500; line-height: 1; text-decoration: none;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+}
+.studio-link-arrow { font-size: 1rem; line-height: 0; transition: transform 0.16s ease; }
+.studio-link:hover { background: var(--wine); border-color: var(--wine); color: var(--paper); }
+.studio-link:hover .studio-link-arrow { transform: translateX(2px); }
+.studio-link:active .studio-link-arrow { transform: translateX(3px); }
+.studio-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 
 .hero {
   position: relative; min-height: 88vh;
@@ -199,10 +214,12 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .shimmer, .intro-btn, .music.playing .disc span { animation: none; }
+  .studio-link, .studio-link-arrow { transition: none; }
 }
 
 @media (max-width: 800px) {
   .links { display: none; }
+  .nav-actions { gap: 0; }
   .hero { grid-template-columns: 1fr; padding-top: 2rem; }
   .people { grid-template-columns: 1fr; }
   .person { grid-template-columns: 110px 1fr; }
