@@ -1,5 +1,8 @@
 (function () {
   const { MODULES } = window.STUDIO_SCHEMAS;
+  const remote = new window.STUDIO_GITHUB.GitHubStore();
+  let online = new URLSearchParams(location.search).get("mode") === "github" || !["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+  let submitting = false;
 
   const state = {
     site: null,
@@ -95,6 +98,7 @@
 
   function resolveAssetUrl(value) {
     if (!value) return "";
+    if (online) return remote.assetUrl(value);
     if (/^(https?:|data:|blob:)/i.test(value)) return value;
     return `../${String(value).replace(/^\/+/, "")}`;
   }
@@ -129,6 +133,16 @@
   }
 
   async function request(path, options = {}) {
+    if (online) {
+      const body = options.body ? JSON.parse(options.body) : {};
+      if (path === "/api/state") return remote.load();
+      if (path === "/api/save") {
+        remote.saveDraft(body.site, body.credits);
+        return { assets: remote.assets(body.site, body.credits) };
+      }
+      if (path === "/api/validate") return remote.validate(body.site, body.credits);
+      throw new Error("线上模式不支持此本地操作");
+    }
     const response = await fetch(path, {
       headers: { "Content-Type": "application/json", ...(options.headers || {}) },
       ...options,
@@ -139,6 +153,7 @@
   }
 
   async function loadState({ quiet = false } = {}) {
+    if (online && !remote.connected) { configureMode(); return; }
     try {
       const payload = await request("/api/state");
       state.site = payload.site;
@@ -148,10 +163,14 @@
       state.selectedIndex = null;
       state.activeGroup = null;
       setDirty(false);
-      setConnection(true, "本地编辑服务已连接");
+      setConnection(true, online ? "GitHub 已连接" : "本地编辑服务已连接");
       renderAll();
+      configureMode();
+      if (online) $("sync-status").textContent = "已读取 hinskenny-site。保存草稿仅存此设备；提交审核后需到 GitHub 合并。";
       if (!quiet) toast("内容已载入", "success");
+      return true;
     } catch (error) {
+      if (online) { toast(error.message, "error", 7000); return false; }
       setConnection(false, "未连接本地编辑服务");
       showStartupError(error);
     }
@@ -225,6 +244,7 @@
       if (target) target.textContent = value;
     });
     els.statusTabs.hidden = schema.virtual;
+    els.statusTabs.querySelectorAll("[data-status]").forEach(tab => tab.classList.toggle("active", tab.dataset.status === state.status));
   }
 
   function filteredRows() {
@@ -458,6 +478,7 @@
   }
 
   function addItem() {
+    if (!state.site) return;
     const schema = MODULES[state.module];
     if (!schema.defaultItem) return;
     const item = schema.defaultItem();
@@ -521,7 +542,8 @@
       state.assets = payload.assets || state.assets;
       setDirty(false);
       renderModuleTabs();
-      if (!quiet) toast("草稿已保存", "success");
+      configureMode();
+      if (!quiet) toast(online ? "草稿仅保存到此设备，尚未提交 GitHub" : "草稿已保存", "success");
       return true;
     } catch (error) {
       toast(error.message, "error", 7000);
@@ -530,6 +552,7 @@
   }
 
   async function validateContent({ openDialog = true } = {}) {
+    if (!state.site) return null;
     try {
       const result = await request("/api/validate", {
         method: "POST",
@@ -583,6 +606,7 @@
   }
 
   async function previewSite() {
+    if (online) { await previewOnline(); return; }
     const previewWindow = window.open("about:blank", "hinskenny-preview");
     if (previewWindow) {
       previewWindow.document.title = "正在准备 HinsKenny 预览…";
@@ -599,6 +623,7 @@
   }
 
   async function publishSite() {
+    if (online) { await submitOnline(); return; }
     const saved = await saveDraft({ quiet: true });
     if (!saved) return;
     const validation = await validateContent({ openDialog: false });
@@ -624,6 +649,16 @@
 
   async function uploadAsset(file, targetPath) {
     if (!file || !targetPath) return;
+    if (online) {
+      try {
+        const path = await remote.upload(file);
+        updateSelected(targetPath, path);
+        state.assets = remote.assets(state.site, state.credits);
+        renderEditor(); renderModuleTabs(); renderTable();
+        toast("图片已暂存，提交审核时一起上传 GitHub");
+      } catch (error) { toast(error.message, "error"); }
+      return;
+    }
     if (file.size > 10 * 1024 * 1024) {
       toast("单张图片不能超过 10 MB", "error");
       return;
@@ -668,10 +703,13 @@
         els.confirmDialog.close();
         $("confirm-ok-btn").removeEventListener("click", onConfirm);
         $("confirm-cancel-btn").removeEventListener("click", onCancel);
+        els.confirmDialog.removeEventListener("cancel", onEscape);
         resolve(value);
       };
       const onConfirm = () => finish(true);
       const onCancel = () => finish(false);
+      const onEscape = (event) => { event.preventDefault(); finish(false); };
+      els.confirmDialog.addEventListener("cancel", onEscape);
       $("confirm-ok-btn").addEventListener("click", onConfirm);
       $("confirm-cancel-btn").addEventListener("click", onCancel);
     });
@@ -771,10 +809,110 @@
   $("close-validation-footer-btn").addEventListener("click", () => els.validationDialog.close());
 
   window.addEventListener("beforeunload", (event) => {
-    if (!state.dirty) return;
+    if (!state.dirty && !submitting) return;
     event.preventDefault();
     event.returnValue = "";
   });
 
+  function configureMode() {
+    $("sync-panel").hidden = !online;
+    $("save-btn").textContent = online ? "保存设备草稿" : "保存草稿";
+    $("publish-btn").textContent = online ? "提交审核" : "发布";
+    $("github-connect-btn").textContent = remote.connected ? "更换 Token" : "连接 GitHub";
+    $("restore-draft-btn").disabled = !remote.connected || !remote.draft();
+    $("disconnect-btn").disabled = !remote.connected;
+    for (const id of ["add-btn", "save-btn", "validate-btn", "preview-btn", "publish-btn"]) $(id).disabled = !state.site || (online && !remote.connected);
+    if (online && !remote.connected) setConnection(false, "尚未连接 GitHub");
+    $("pr-link").hidden = !remote.pr;
+    if (remote.pr) { $("pr-link").href = remote.pr.url; $("pr-link").textContent = `查看 PR #${remote.pr.number}`; }
+  }
+
+  async function submitOnline() {
+    if (submitting || !state.site) return;
+    submitting = true;
+    try {
+      const result = remote.validate(state.site, state.credits);
+      if (result.issues.some(i => i.level === "error")) { showValidation(result); return; }
+      if (!await confirmAction("提交内容审核？", "将把内容和暂存图片保存到 GitHub 内容更新分支，创建或更新 PR。合并到 hinskenny-site 后才会触发部署。", "提交审核")) return;
+      $("github-connect-btn").disabled = true;
+      $("disconnect-btn").disabled = true;
+      document.querySelector(".workspace").inert = true;
+      document.querySelector(".module-tabs").inert = true;
+      document.querySelector(".top-actions").inert = true;
+      $("sync-status").textContent = "正在提交 GitHub，请保持页面开启…";
+      const pr = await remote.submit(clone(state.site), clone(state.credits));
+      setDirty(false);
+      $("sync-status").textContent = `已保存到 GitHub：${remote.branch}。等待你合并 PR #${pr.number}；尚未上线。`;
+      toast("已提交审核", "success");
+    } catch (error) {
+      $("sync-status").textContent = `${error.message}。${remote.branch ? `内容分支：${remote.branch}。可重试以完成 PR。` : "本页编辑内容仍然保留。"}`;
+      toast(error.message, "error", 8000);
+    } finally {
+      submitting = false;
+      document.querySelector(".workspace").inert = false;
+      document.querySelector(".module-tabs").inert = false;
+      document.querySelector(".top-actions").inert = false;
+      $("github-connect-btn").disabled = false;
+      configureMode();
+    }
+  }
+
+  async function previewOnline() {
+    if (!state.site) return;
+    const check = remote.validate(state.site, state.credits);
+    if (check.issues.some(i => i.level === "error")) { showValidation(check); return; }
+    try {
+      const root = new URL("../", location.href);
+      const response = await fetch(new URL("index.html", root));
+      if (!response.ok) throw new Error("无法读取主站预览模板");
+      const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+      const base = doc.createElement("base"); base.href = root.href; doc.head.prepend(base);
+      // Isolated opaque-origin iframe: content scripts cannot read the editor or its Token.
+      const site = clone(state.site), credits = clone(state.credits);
+      for (const items of [...Object.values(site).filter(Array.isArray), credits]) for (const item of items) {
+        for (const key of ["photo", "src", "cover", "file"]) if (item[key]) item[key] = remote.assetUrl(item[key]);
+      }
+      const payload = window.STUDIO_GITHUB.publicData(site, credits);
+      for (const [name, value, global] of [["data.js", payload.site, "SITE"], ["credits.js", payload.credits, "CREDITS"]]) {
+        const script = doc.querySelector(`script[src="${name}"]`);
+        if (!script) throw new Error("预览模板不匹配");
+        script.removeAttribute("src");
+        script.textContent = `window.${global} = ${JSON.stringify(value).replace(/</g, "\\u003c")};`;
+      }
+      $("preview-frame").srcdoc = "<!doctype html>" + doc.documentElement.outerHTML;
+      $("preview-dialog").showModal();
+    } catch (error) { toast(error.message, "error"); }
+  }
+
+  $("preview-close").addEventListener("click", () => $("preview-dialog").close());
+  $("preview-dialog").addEventListener("close", () => { $("preview-frame").srcdoc = ""; });
+  $("github-connect-btn").addEventListener("click", () => { $("github-error").textContent = ""; $("github-dialog").showModal(); });
+  $("github-cancel").addEventListener("click", () => $("github-dialog").close());
+  $("github-dialog").addEventListener("close", () => { $("github-token").value = ""; });
+  $("github-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    if (state.dirty && !await confirmAction("连接并重新读取内容？", "请先保存设备草稿。连接会读取部署分支最新内容，之后可恢复设备草稿。", "继续连接")) return;
+    $("github-submit").disabled = true;
+    const token = $("github-token").value; $("github-token").value = "";
+    try {
+      await remote.connect(token); online = true;
+      if (!await loadState({ quiet: true })) throw new Error("已验证 Token，但内容读取失败。请检查权限和网络后重试");
+      $("github-dialog").close();
+      configureMode();
+    } catch (error) { $("github-error").textContent = error.message; configureMode(); }
+    finally { $("github-submit").disabled = false; }
+  });
+  $("restore-draft-btn").addEventListener("click", async () => {
+    const draft = remote.draft();
+    if (!draft || !await confirmAction("恢复设备草稿？", `保存时间：${draft.savedAt}。将替换当前页面内容；提交时仍会检查远端版本。`, "恢复")) return;
+    try {
+      const data = remote.restore(draft);
+      state.site = data.site; state.credits = data.credits; state.assets = data.assets;
+      state.selectedIndex = null; setDirty(true); renderAll(); configureMode();
+      $("sync-status").textContent = "已恢复设备草稿。已有 PR 的内容将继续提交到同一个分支；提交前会检查版本。";
+    } catch (error) { toast(error.message, "error"); }
+  });
+  $("disconnect-btn").addEventListener("click", () => { remote.disconnect(); configureMode(); $("sync-status").textContent = "已清除内存中的 Token。重新连接后可恢复设备草稿。"; });
+  configureMode();
   loadState({ quiet: true });
 })();

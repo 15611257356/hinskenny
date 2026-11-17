@@ -57,6 +57,8 @@ python3 studio/server.py
 
 然后打开 `http://127.0.0.1:8765/studio/`。工作台支持草稿、模板化字段、图片上传、内容校验、主站预览和静态发布。详细说明见 [`studio/README.md`](studio/README.md)。
 
+部署后也可直接打开网站的 `studio/`，通过仅授权本仓库的 GitHub Token 提交内容。工作台自动创建内容更新分支和 PR，你在 GitHub 合并到 `hinskenny-site` 后，由现有部署流程更新网站。无需额外后台服务；Token 仅保留在页面内存。
+
 ## 本地预览
 
 由于没有构建步骤，可以使用任意静态文件服务器在项目根目录预览。例如，已安装 Python 3 时：

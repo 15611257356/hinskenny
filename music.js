@@ -1,5 +1,6 @@
 // 背景音乐小播放器。浏览器不允许无交互自动放声音，所以由开场“进入”按钮触发第一次播放。
 (() => {
+  const escapeText = (value = "") => String(value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const tracks = window.SITE.music || [];
   const music = document.getElementById("music");
   const frame = document.getElementById("music-frame");
@@ -14,15 +15,17 @@
       ? `https://player.bilibili.com/player.html?bvid=${t.bv}&autoplay=1&danmaku=0&high_quality=1`
       : `https://www.youtube-nocookie.com/embed/${t.youtube}?autoplay=1&loop=1&playlist=${t.youtube}`;
 
-  tabs.innerHTML = tracks.map((t, i) => `<button data-i="${i}">${t.label}</button>`).join("");
+  tabs.innerHTML = tracks.map((t, i) => `<button data-i="${i}">${escapeText(t.label)}</button>`).join("");
 
   function render() {
     tabs.querySelectorAll("button").forEach((b, i) => b.classList.toggle("on", i === current));
     const t = tracks[current];
-    note.innerHTML = `${t.note} · <a href="${t.source}" target="_blank" rel="noopener">出处</a>`;
+    if (!t) { note.textContent = "暂无音乐"; return; }
+    note.innerHTML = `${escapeText(t.note)} · <a href="${escapeText(/^https?:\/\//i.test(t.source || "") ? t.source : "#")}" target="_blank" rel="noopener">出处</a>`;
   }
 
   function play(i = current) {
+    if (!tracks[i]) return;
     current = i;
     const iframe = document.createElement("iframe");
     iframe.src = embedUrl(tracks[i]);

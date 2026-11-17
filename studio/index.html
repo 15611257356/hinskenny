@@ -34,6 +34,7 @@
           <h1>素材与内容</h1>
         </div>
         <div class="top-actions">
+          <button class="btn" id="github-connect-btn" type="button">连接 GitHub</button>
           <button class="btn quiet" id="reload-btn" type="button">重新载入</button>
           <button class="btn" id="save-btn" type="button">保存草稿</button>
           <button class="btn" id="validate-btn" type="button">内容检查</button>
@@ -44,6 +45,12 @@
 
       <main class="workspace">
       <section class="list-pane" aria-label="内容列表">
+        <div class="sync-panel" id="sync-panel" hidden>
+          <p id="sync-status" role="status">线上模式：连接 GitHub 后开始编辑。</p>
+          <div><button class="btn small" id="restore-draft-btn" type="button">恢复设备草稿</button>
+          <button class="btn small" id="disconnect-btn" type="button">断开连接</button>
+          <a id="pr-link" target="_blank" rel="noopener noreferrer" hidden>前往 GitHub 审核</a></div>
+        </div>
         <div class="section-intro">
           <div>
             <p class="section-kicker">当前板块</p>
@@ -142,9 +149,25 @@
 
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
+  <dialog class="confirm-dialog" id="github-dialog">
+    <form id="github-form">
+      <h2>连接 GitHub</h2>
+      <p>仓库：15611257356/hinskenny<br>审核目标：hinskenny-site</p>
+      <p>使用仅授权本仓库的细粒度 Token，开启 Contents 和 Pull requests 读写权限。Token 仅保留在本页面内存，刷新后需重新输入。</p>
+      <label class="field">访问令牌<input id="github-token" type="password" autocomplete="off" spellcheck="false" required></label>
+      <p id="github-error" role="alert"></p>
+      <div class="dialog-actions"><button class="btn" id="github-cancel" type="button">取消</button><button class="btn primary" id="github-submit" type="submit">连接并读取内容</button></div>
+    </form>
+  </dialog>
+  <dialog id="preview-dialog" class="preview-dialog">
+    <div class="dialog-head"><strong>可发布内容预览 · 尚未上线</strong><button class="btn" id="preview-close" type="button">关闭预览</button></div>
+    <iframe id="preview-frame" title="主站内容预览" sandbox="allow-scripts allow-popups" referrerpolicy="no-referrer"></iframe>
+  </dialog>
+
   <input id="asset-upload-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden />
 
   <script src="schemas.js"></script>
+  <script src="github.js"></script>
   <script src="studio.js"></script>
 </body>
 </html>
