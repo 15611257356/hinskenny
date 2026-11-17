@@ -217,6 +217,14 @@
   ],
   "photos": [
     {
+      "id": "photo-mwl2js1b",
+      "src": "images/studio-18cfc814-9af1-4233-9ef8-fc489536e994.png",
+      "caption": "新图片test",
+      "alt": "新增text无障碍",
+      "creditId": "test-ID11111",
+      "_status": "draft"
+    },
+    {
       "id": "photo-hins-2007",
       "src": "images/hins-2007.jpg",
       "caption": "张敬轩 · 2007",
