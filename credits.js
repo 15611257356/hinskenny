@@ -1,6 +1,22 @@
 // 由内容工作台生成。
 window.CREDITS = [
   {
+    "id": "credit-mwl302bu",
+    "file": "images/studio-fde0d04d-0247-4e2c-a38e-e30bfaa408d5.png",
+    "title": "新版权记录",
+    "author": "test",
+    "license": "hhhhh",
+    "source": "https://github.com/kasonye/ui-aesthetics-skill"
+  },
+  {
+    "id": "credit-mwl2xvdp",
+    "file": "images/studio-07a4ea0b-f752-45bc-bd6f-a9d430ea4338.png",
+    "title": "新版权记录",
+    "author": "test1",
+    "license": "eeeee",
+    "source": "https://github.com/kasonye/ui-aesthetics-skill"
+  },
+  {
     "id": "credit-hins-2007",
     "file": "images/hins-2007.jpg",
     "title": "HinsCheung2007.jpg",
