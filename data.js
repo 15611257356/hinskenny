@@ -197,6 +197,20 @@ window.SITE = {
   ],
   "photos": [
     {
+      "id": "photo-mwl2rfk9",
+      "src": "images/studio-926d3782-c463-4061-a59e-5822311a4dc8.png",
+      "caption": "新图片2",
+      "alt": "test222",
+      "creditId": "credit-mwl302bu"
+    },
+    {
+      "id": "photo-mwl2js1b",
+      "src": "images/studio-18cfc814-9af1-4233-9ef8-fc489536e994.png",
+      "caption": "新图片test",
+      "alt": "新增text无障碍",
+      "creditId": "credit-mwl2xvdp"
+    },
+    {
       "id": "photo-hins-2007",
       "src": "images/hins-2007.jpg",
       "caption": "张敬轩 · 2007",
