@@ -5,6 +5,12 @@ const $ = (id) => document.getElementById(id);
 const esc = (s = "") =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+const mediaUrl = (value = "") => {
+  const url = String(value).trim();
+  if (/^https:\/\/[^\s"'<>`]+$/i.test(url) || (/^images\/[\w./-]+$/.test(url) && !url.split("/").includes(".."))) return esc(url);
+  return "";
+};
+
 const bvUrl = (bv) => `https://www.bilibili.com/video/${bv}/`;
 
 const creditLine = (src) => {
@@ -15,7 +21,7 @@ const creditLine = (src) => {
 
 function player(bv, cover) {
   const inner = cover
-    ? `<button data-bv="${bv}" aria-label="播放"><img src="${cover}" alt="" loading="lazy" referrerpolicy="no-referrer" /></button>`
+    ? `<button data-bv="${bv}" aria-label="播放"><img src="${mediaUrl(cover)}" alt="" loading="lazy" referrerpolicy="no-referrer" /></button>`
     : `<button data-bv="${bv}" aria-label="播放"><span class="placeholder">点击播放 B 站视频</span></button>`;
   return `<div class="player">${inner}</div>`;
 }
@@ -30,15 +36,21 @@ document.addEventListener("click", (e) => {
   btn.replaceWith(iframe);
 });
 
+document.addEventListener("error", (event) => {
+  if (!(event.target instanceof HTMLImageElement)) return;
+  event.target.classList.add("image-error");
+  if (!event.target.alt) event.target.alt = "图片暂时无法加载";
+}, true);
+
 $("hero-photos").innerHTML = people
-  .map((p) => `<figure><img src="${p.photo}" alt="${esc(p.name)}" /><figcaption>${esc(p.en)}</figcaption></figure>`)
+  .map((p) => `<figure><img src="${mediaUrl(p.photo)}" alt="${esc(p.name)}" referrerpolicy="no-referrer" /><figcaption>${esc(p.en)}</figcaption></figure>`)
   .join("");
 
 $("people-list").innerHTML = people
   .map(
     (p) => `
     <article class="person">
-      <img src="${p.photo}" alt="${esc(p.name)}" data-zoom="${p.photo}" />
+      <img src="${mediaUrl(p.photo)}" alt="${esc(p.name)}" data-zoom="${mediaUrl(p.photo)}" referrerpolicy="no-referrer" />
       <div>
         <h3>${esc(p.name)}</h3>
         <div class="en">${esc(p.en)}</div>
@@ -53,7 +65,7 @@ $("timeline").innerHTML = timeline
   .map((t) => {
     const media = [
       t.video ? player(t.video, t.cover || sugars.find((s) => s.video === t.video)?.cover) : "",
-      t.photo ? `<img src="${t.photo}" alt="" loading="lazy" data-zoom="${t.photo}" />` : "",
+      t.photo ? `<img src="${mediaUrl(t.photo)}" alt="" loading="lazy" data-zoom="${mediaUrl(t.photo)}" referrerpolicy="no-referrer" />` : "",
     ].join("");
     const src = t.source ? `<p class="src">出处：<a href="${t.source.url}" target="_blank" rel="noopener">${esc(t.source.label)}</a></p>` : "";
     return `
@@ -85,8 +97,8 @@ $("sugars").innerHTML = sugars
 $("gallery-grid").innerHTML = photos
   .map(
     (p) => `
-    <figure data-zoom="${p.src}">
-      <img src="${p.src}" alt="${esc(p.caption)}" loading="lazy" />
+    <figure data-zoom="${mediaUrl(p.src)}">
+      <img src="${mediaUrl(p.src)}" alt="${esc(p.caption)}" loading="lazy" referrerpolicy="no-referrer" />
       <figcaption>${esc(p.caption)}</figcaption>
     </figure>`
   )

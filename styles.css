@@ -12,6 +12,7 @@
 html { scroll-behavior: smooth; }
 body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans); line-height: 1.75; }
 img { display: block; max-width: 100%; }
+img.image-error { min-height: 96px; object-fit: contain; background: #eee8df; color: #6f665d; }
 a { color: var(--wine); }
 
 .nav {

@@ -32,6 +32,7 @@ PROJECT_ROOT = STUDIO_DIR.parent
 CONTENT_DIR = STUDIO_DIR / "content"
 SITE_FILE = CONTENT_DIR / "site.json"
 CREDITS_FILE = CONTENT_DIR / "credits.json"
+ASSETS_FILE = CONTENT_DIR / "assets.json"
 IMAGES_DIR = PROJECT_ROOT / "images"
 BACKUP_DIR = STUDIO_DIR / "backups"
 
@@ -59,7 +60,7 @@ REQUIRED_FIELDS = {
     "people": ["id", "name", "en", "photo", "intro"],
     "timeline": ["id", "year", "title", "text"],
     "sugars": ["id", "title", "tag", "story", "video", "cover", "by"],
-    "photos": ["id", "src", "caption", "alt", "creditId"],
+    "photos": ["id", "src", "caption"],
     "sources": ["id", "label", "url"],
     "credits": ["id", "file", "title", "author", "license", "source"],
 }
@@ -153,8 +154,7 @@ def build_usage_map(site: dict[str, Any], credits: list[dict[str, Any]]) -> dict
     return usage
 
 
-def build_assets(site: dict[str, Any], credits: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    usage = build_usage_map(site, credits)
+def build_file_assets() -> list[dict[str, Any]]:
     assets: list[dict[str, Any]] = []
     if IMAGES_DIR.exists():
         for file_path in sorted(IMAGES_DIR.iterdir(), key=lambda path: path.name.lower()):
@@ -166,24 +166,13 @@ def build_assets(site: dict[str, Any], credits: list[dict[str, Any]]) -> list[di
                 "label": file_path.name,
                 "path": relative,
                 "kind": "本地图片",
+                "provider": "GitHub",
                 "sizeLabel": human_size(file_path.stat().st_size),
-                "usedBy": "；".join(usage.get(relative, [])),
             })
-
-    remote_paths = sorted(path for path in usage if isinstance(path, str) and path.startswith(("http://", "https://")))
-    for path in remote_paths:
-        assets.append({
-            "id": f"remote:{path}",
-            "label": path.rsplit("/", 1)[-1] or path,
-            "path": path,
-            "kind": "远程封面",
-            "sizeLabel": "远程",
-            "usedBy": "；".join(usage.get(path, [])),
-        })
     return assets
 
 
-def validate_content(site: Any, credits: Any) -> dict[str, Any]:
+def validate_content(site: Any, credits: Any, assets: Any) -> dict[str, Any]:
     issues: list[dict[str, str]] = []
     checked = 0
 
@@ -194,8 +183,37 @@ def validate_content(site: Any, credits: Any) -> dict[str, Any]:
         return {"checked": 0, "issues": [{"level": "error", "location": "站点数据", "message": "site 必须是对象。"}]}
     if not isinstance(credits, list):
         return {"checked": 0, "issues": [{"level": "error", "location": "版权数据", "message": "credits 必须是数组。"}]}
+    if not isinstance(assets, list):
+        return {"checked": 0, "issues": [{"level": "error", "location": "素材库", "message": "assets 必须是数组。"}]}
 
     all_ids: dict[str, str] = {}
+    registered_urls: set[str] = set()
+    for index, asset in enumerate(assets):
+        checked += 1
+        if not isinstance(asset, dict):
+            issue("error", f"素材库 #{index + 1}", "素材必须是对象。")
+            continue
+        location = f"素材库 · {asset.get('name') or asset.get('id') or '未命名'}"
+        asset_id = asset.get("id")
+        if not isinstance(asset_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", asset_id):
+            issue("error", location, "素材 ID 只能包含小写英文、数字和连字符。")
+        elif asset_id in all_ids:
+            issue("error", location, f"唯一 ID 与“{all_ids[asset_id]}”重复：{asset_id}。")
+        else:
+            all_ids[asset_id] = location
+        if not str(asset.get("name", "")).strip():
+            issue("error", location, "缺少素材名称。")
+        if not str(asset.get("provider", "")).strip():
+            issue("error", location, "缺少图床服务商。")
+        url = asset.get("url")
+        if not isinstance(url, str) or not re.fullmatch(r"https://[^\s\"'<>`]+", url, re.IGNORECASE):
+            issue("error", location, "图片需要有效的 HTTPS 地址。")
+        elif url in registered_urls:
+            issue("error", location, "图片地址重复登记。")
+        else:
+            registered_urls.add(url)
+        if asset.get("status", "active") not in {"active", "archived"}:
+            issue("error", location, "素材状态无效。")
     collections: list[tuple[str, list[Any]]] = []
     for name in ("music", "people", "timeline", "sugars", "photos", "sources"):
         items = site.get(name)
@@ -243,20 +261,41 @@ def validate_content(site: Any, credits: Any) -> dict[str, Any]:
         if item.get("creditId") and item.get("creditId") not in credit_ids:
             issue("error" if is_published(item) else "warning", f"相册 · {item.get('caption', item.get('id', '未命名'))}", f"找不到版权记录：{item.get('creditId')}。")
 
-    for name, field in (("people", "photo"), ("timeline", "photo"), ("photos", "src")):
+    image_values: list[tuple[str, dict[str, Any], str]] = []
+    for name, field in (("people", "photo"), ("timeline", "photo"), ("timeline", "cover"), ("sugars", "cover"), ("photos", "src")):
         for item in site.get(name, []):
-            if not isinstance(item, dict) or not is_published(item):
+            if isinstance(item, dict) and item.get(field):
+                image_values.append((name, item, field))
+    for item in credits:
+        if isinstance(item, dict) and item.get("file"):
+            image_values.append(("credits", item, "file"))
+
+    for name, item, field in image_values:
+        media = item.get(field)
+        if not isinstance(media, str):
+            continue
+        title = item.get("title") or item.get("name") or item.get("caption") or item.get("id", "未命名")
+        location = f"{COLLECTION_LABELS[name]} · {title}"
+        if media.startswith(("http://", "https://")):
+            if not re.fullmatch(r"https://[^\s\"'<>`]+", media, re.IGNORECASE):
+                issue("error" if is_published(item) else "warning", location, "图片需要有效的 HTTPS 地址。")
+            elif media not in registered_urls:
+                issue("warning", location, "图片外链尚未登记到素材库。")
+
+    for name, item, field in image_values:
+        if not is_published(item):
+            continue
+        media = item.get(field)
+        if media and isinstance(media, str) and not media.startswith(("http://", "https://")):
+            file_path = (PROJECT_ROOT / media).resolve()
+            title = item.get("title") or item.get("name") or item.get("caption") or item.get("id", "未命名")
+            try:
+                file_path.relative_to(PROJECT_ROOT)
+            except ValueError:
+                issue("error", f"{COLLECTION_LABELS[name]} · {title}", "图片路径超出项目目录。")
                 continue
-            media = item.get(field)
-            if media and isinstance(media, str) and not media.startswith(("http://", "https://")):
-                file_path = (PROJECT_ROOT / media).resolve()
-                try:
-                    file_path.relative_to(PROJECT_ROOT)
-                except ValueError:
-                    issue("error", f"{COLLECTION_LABELS[name]} · {item.get('title') or item.get('name') or item.get('caption')}", "图片路径超出项目目录。")
-                    continue
-                if not file_path.is_file():
-                    issue("error", f"{COLLECTION_LABELS[name]} · {item.get('title') or item.get('name') or item.get('caption')}", f"找不到图片文件：{media}。")
+            if not file_path.is_file():
+                issue("error", f"{COLLECTION_LABELS[name]} · {title}", f"找不到图片文件：{media}。")
 
     for item in site.get("timeline", []):
         if is_published(item) and not get_path(item, "source.url"):
@@ -277,14 +316,15 @@ def validate_content(site: Any, credits: Any) -> dict[str, Any]:
     return {"checked": checked, "issues": issues}
 
 
-def ensure_payload(payload: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def ensure_payload(payload: Any) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     if not isinstance(payload, dict):
         raise ValueError("请求内容必须是对象。")
     site = payload.get("site")
     credits = payload.get("credits")
-    if not isinstance(site, dict) or not isinstance(credits, list):
-        raise ValueError("请求必须包含 site 对象和 credits 数组。")
-    return site, credits
+    assets = payload.get("assets")
+    if not isinstance(site, dict) or not isinstance(credits, list) or not isinstance(assets, list):
+        raise ValueError("请求必须包含 site 对象、credits 数组和 assets 数组。")
+    return site, credits, assets
 
 
 class StudioHandler(SimpleHTTPRequestHandler):
@@ -334,12 +374,11 @@ class StudioHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/state":
                 site = load_json(SITE_FILE)
                 credits = load_json(CREDITS_FILE)
-                self.send_json({"site": site, "credits": credits, "assets": build_assets(site, credits)})
+                assets = load_json(ASSETS_FILE)
+                self.send_json({"site": site, "credits": credits, "catalog": assets, "files": build_file_assets()})
                 return
             if parsed.path == "/api/assets":
-                site = load_json(SITE_FILE)
-                credits = load_json(CREDITS_FILE)
-                self.send_json({"assets": build_assets(site, credits)})
+                self.send_json({"files": build_file_assets()})
                 return
             if parsed.path in {"/api/preview-data.js", "/api/preview-credits.js"}:
                 site = load_json(SITE_FILE)
@@ -367,24 +406,26 @@ class StudioHandler(SimpleHTTPRequestHandler):
         try:
             payload = self.read_json_body()
             if parsed.path == "/api/save":
-                site, credits = ensure_payload(payload)
+                site, credits, assets = ensure_payload(payload)
                 atomic_write_json(SITE_FILE, site)
                 atomic_write_json(CREDITS_FILE, credits)
-                self.send_json({"ok": True, "assets": build_assets(site, credits)})
+                atomic_write_json(ASSETS_FILE, assets)
+                self.send_json({"ok": True, "files": build_file_assets()})
                 return
             if parsed.path == "/api/validate":
-                site, credits = ensure_payload(payload)
-                self.send_json(validate_content(site, credits))
+                site, credits, assets = ensure_payload(payload)
+                self.send_json(validate_content(site, credits, assets))
                 return
             if parsed.path == "/api/publish":
-                site, credits = ensure_payload(payload)
-                validation = validate_content(site, credits)
+                site, credits, assets = ensure_payload(payload)
+                validation = validate_content(site, credits, assets)
                 errors = [issue for issue in validation["issues"] if issue["level"] == "error"]
                 if errors:
                     self.send_json({"error": "内容仍有校验错误，无法发布。", "validation": validation}, HTTPStatus.BAD_REQUEST)
                     return
                 atomic_write_json(SITE_FILE, site)
                 atomic_write_json(CREDITS_FILE, credits)
+                atomic_write_json(ASSETS_FILE, assets)
                 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
                 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
                 for name in ("data.js", "credits.js"):
@@ -445,7 +486,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
         relative = candidate.relative_to(PROJECT_ROOT).as_posix()
         site = load_json(SITE_FILE)
         credits = load_json(CREDITS_FILE)
-        return {"ok": True, "path": relative, "assets": build_assets(site, credits)}
+        return {"ok": True, "path": relative, "files": build_file_assets()}
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -456,8 +497,8 @@ def parse_arguments() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_arguments()
-    if not SITE_FILE.is_file() or not CREDITS_FILE.is_file():
-        raise SystemExit("Missing studio/content/site.json or studio/content/credits.json")
+    if not SITE_FILE.is_file() or not CREDITS_FILE.is_file() or not ASSETS_FILE.is_file():
+        raise SystemExit("Missing studio content JSON files")
     server = ThreadingHTTPServer(("127.0.0.1", args.port), StudioHandler)
     print(f"HinsKenny Studio: http://127.0.0.1:{args.port}/studio/")
     print("Press Ctrl+C to stop.")

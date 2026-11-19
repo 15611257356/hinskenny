@@ -7,6 +7,8 @@
   const state = {
     site: null,
     credits: [],
+    assetCatalog: [],
+    assetFiles: [],
     assets: [],
     module: "timeline",
     selectedIndex: null,
@@ -15,6 +17,8 @@
     search: "",
     dirty: false,
     uploadTargetPath: null,
+    pickerTargetPath: null,
+    linkTargetPath: null,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -55,7 +59,7 @@
     music: "维护音乐条目、平台嵌入与来源。",
     sources: "统一记录资料来源与访问日期。",
     credits: "管理图片作者、许可证与原始页面。",
-    assets: "核对项目内素材及其引用位置。",
+    assets: "登记图床链接、复用图片，并核对项目内素材引用位置。",
   };
 
   const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -89,6 +93,7 @@
     const allIds = new Set([
       ...Object.keys(state.site || {}).flatMap((key) => Array.isArray(state.site[key]) ? state.site[key].map((item) => item.id) : []),
       ...state.credits.map((item) => item.id),
+      ...state.assetCatalog.map((item) => item.id),
     ]);
     let id = `${prefix}-${base}`;
     let suffix = 2;
@@ -108,6 +113,64 @@
     if (schema.virtual) return state.assets;
     if (moduleKey === "credits") return state.credits;
     return state.site?.[schema.collection] || [];
+  }
+
+  function usageMap() {
+    const usage = new Map();
+    const add = (path, label) => {
+      if (!path) return;
+      const labels = usage.get(path) || [];
+      if (!labels.includes(label)) labels.push(label);
+      usage.set(path, labels);
+    };
+    const groups = { ...state.site, credits: state.credits };
+    Object.entries(groups).forEach(([key, items]) => {
+      if (!Array.isArray(items)) return;
+      items.forEach((item) => {
+        const label = item.title || item.name || item.caption || item.label || item.id || "未命名";
+        ["photo", "src", "cover", "file"].forEach((field) => add(item[field], `${MODULES[key]?.label || key}：${label}`));
+      });
+    });
+    return usage;
+  }
+
+  function refreshAssets(selectedCatalogId = null) {
+    const usage = usageMap();
+    const registeredUrls = new Set(state.assetCatalog.map((asset) => asset.url).filter(Boolean));
+    const catalogRows = state.assetCatalog.map((asset) => ({
+      id: `catalog:${asset.id}`,
+      catalogId: asset.id,
+      registered: true,
+      label: asset.name,
+      path: asset.url,
+      kind: asset.status === "archived" ? "图床素材（已归档）" : "图床素材",
+      provider: asset.provider,
+      alt: asset.alt || "",
+      note: asset.note || "",
+      status: asset.status || "active",
+      sizeLabel: "远程",
+      usedBy: (usage.get(asset.url) || []).join("；"),
+    }));
+    const fileRows = state.assetFiles.map((asset) => ({
+      ...asset,
+      id: `file:${asset.path}`,
+      registered: false,
+      usedBy: (usage.get(asset.path) || []).join("；"),
+    }));
+    const unregisteredRows = [...usage.keys()]
+      .filter((path) => /^https?:\/\//i.test(path) && !registeredUrls.has(path))
+      .map((path) => ({
+        id: `remote:${path}`,
+        label: path.split("/").pop() || path,
+        path,
+        kind: "未登记外链",
+        provider: "外部链接",
+        registered: false,
+        sizeLabel: "远程",
+        usedBy: (usage.get(path) || []).join("；"),
+      }));
+    state.assets = [...catalogRows, ...fileRows, ...unregisteredRows];
+    if (selectedCatalogId && state.module === "assets") state.selectedIndex = state.assets.findIndex((item) => item.catalogId === selectedCatalogId);
   }
 
   function selectedItem() {
@@ -130,6 +193,12 @@
       if (!photo.alt) photo.alt = photo.caption || "";
       if (!photo.creditId) photo.creditId = creditByFile.get(photo.src) || "";
     });
+    state.assetCatalog.forEach((asset, index) => {
+      if (!asset.id) asset.id = uniqueId("asset", asset.name || String(index + 1));
+      if (!asset.provider) asset.provider = "123pan";
+      if (!asset.status) asset.status = "active";
+    });
+    refreshAssets();
   }
 
   async function request(path, options = {}) {
@@ -137,10 +206,10 @@
       const body = options.body ? JSON.parse(options.body) : {};
       if (path === "/api/state") return remote.load();
       if (path === "/api/save") {
-        remote.saveDraft(body.site, body.credits);
-        return { assets: remote.assets(body.site, body.credits) };
+        remote.saveDraft(body.site, body.credits, body.assets);
+        return { files: remote.fileAssets() };
       }
-      if (path === "/api/validate") return remote.validate(body.site, body.credits);
+      if (path === "/api/validate") return remote.validate(body.site, body.credits, body.assets);
       throw new Error("线上模式不支持此本地操作");
     }
     const response = await fetch(path, {
@@ -158,7 +227,8 @@
       const payload = await request("/api/state");
       state.site = payload.site;
       state.credits = payload.credits;
-      state.assets = payload.assets || [];
+      state.assetCatalog = payload.catalog || [];
+      state.assetFiles = payload.files || [];
       normalizeState();
       state.selectedIndex = null;
       state.activeGroup = null;
@@ -314,7 +384,7 @@
     });
 
     els.empty.hidden = rows.length > 0;
-    els.add.hidden = schema.virtual;
+    els.add.hidden = schema.virtual && !schema.defaultItem;
     els.add.textContent = `新增${schema.singular}`;
   }
 
@@ -365,32 +435,78 @@
     const preview = document.createElement("img");
     preview.className = "asset-preview";
     preview.src = resolveAssetUrl(item.path);
-    preview.alt = item.label;
+    preview.alt = item.label || "素材预览";
+    preview.addEventListener("error", () => preview.classList.add("is-error"));
     group.append(preview);
-    [
-      ["文件 / 地址", item.path],
-      ["类型", item.kind],
-      ["大小", item.sizeLabel || "远程素材"],
-      ["引用位置", item.usedBy || "尚未引用"],
-    ].forEach(([label, value]) => {
-      const field = document.createElement("div");
-      field.className = "field";
-      const title = document.createElement("label");
-      title.textContent = label;
-      const box = document.createElement("div");
-      box.className = "asset-field";
-      const input = document.createElement("input");
-      input.value = value;
-      input.readOnly = true;
-      box.append(input);
-      field.append(title, box);
-      group.append(field);
-    });
+    if (item.registered) {
+      const catalog = state.assetCatalog.find((asset) => asset.id === item.catalogId);
+      [
+        ["素材名称", "name", "text"],
+        ["公开图片链接", "url", "url"],
+        ["图床服务商", "provider", "text"],
+        ["默认替代文本", "alt", "text"],
+        ["备注", "note", "textarea-compact"],
+      ].forEach(([labelText, path, type]) => {
+        const field = document.createElement("div");
+        field.className = "field";
+        const label = document.createElement("label");
+        label.textContent = labelText;
+        const input = type.startsWith("textarea") ? document.createElement("textarea") : document.createElement("input");
+        if (type === "url") input.type = "url";
+        if (type === "textarea-compact") input.className = "compact";
+        input.dataset.catalogField = path;
+        input.value = catalog?.[path] || "";
+        field.append(label, input);
+        group.append(field);
+      });
+      const statusField = document.createElement("div");
+      statusField.className = "field";
+      const statusLabel = document.createElement("label");
+      statusLabel.textContent = "素材状态";
+      const select = document.createElement("select");
+      select.dataset.catalogField = "status";
+      [["active", "使用中"], ["archived", "已归档"]].forEach(([value, label]) => {
+        const option = document.createElement("option"); option.value = value; option.textContent = label; select.append(option);
+      });
+      select.value = catalog?.status || "active";
+      statusField.append(statusLabel, select);
+      group.append(statusField);
+    } else {
+      [
+        ["文件 / 地址", item.path],
+        ["类型", item.kind],
+        ["服务商", item.provider || "—"],
+        ["引用位置", item.usedBy || "尚未引用"],
+      ].forEach(([label, value]) => {
+        const field = document.createElement("div");
+        field.className = "field";
+        const title = document.createElement("label");
+        title.textContent = label;
+        const input = document.createElement("input");
+        input.value = value;
+        input.readOnly = true;
+        field.append(title, input);
+        group.append(field);
+      });
+      if (/^https:\/\//i.test(item.path)) {
+        const register = document.createElement("button");
+        register.type = "button";
+        register.className = "btn primary";
+        register.dataset.registerAssetUrl = item.path;
+        register.dataset.registerAssetName = item.label;
+        register.textContent = "登记到素材库";
+        group.append(register);
+      }
+    }
+    const usage = document.createElement("p");
+    usage.className = "field-help";
+    usage.textContent = `引用位置：${item.usedBy || "尚未引用"}`;
+    group.append(usage);
     els.form.append(group);
     $("move-up-btn").disabled = true;
     $("move-down-btn").disabled = true;
     $("duplicate-btn").disabled = true;
-    $("delete-btn").disabled = true;
+    $("delete-btn").disabled = !item.registered;
   }
 
   function createField(field, item) {
@@ -433,18 +549,24 @@
     if (field.type === "asset") {
       const assetRow = document.createElement("div");
       assetRow.className = "asset-field";
-      const upload = document.createElement("button");
-      upload.type = "button";
-      upload.className = "btn";
-      upload.dataset.uploadFor = field.path;
-      upload.textContent = "上传图片";
-      assetRow.append(input, upload);
+      const choose = document.createElement("button");
+      choose.type = "button";
+      choose.className = "btn";
+      choose.dataset.pickAssetFor = field.path;
+      choose.textContent = "选择素材";
+      const register = document.createElement("button");
+      register.type = "button";
+      register.className = "btn";
+      register.dataset.registerFor = field.path;
+      register.textContent = "登记链接";
+      assetRow.append(input, choose, register);
       wrapper.append(assetRow);
       if (value) {
         const preview = document.createElement("img");
         preview.className = "asset-preview";
         preview.src = resolveAssetUrl(value);
         preview.alt = "当前图片预览";
+        preview.addEventListener("error", () => preview.classList.add("is-error"));
         wrapper.append(preview);
       }
     } else {
@@ -472,6 +594,18 @@
   function updateSelected(path, value) {
     const item = selectedItem();
     if (!item) return;
+    if (state.module === "assets") {
+      if (!item.registered) return;
+      const catalog = state.assetCatalog.find((asset) => asset.id === item.catalogId);
+      if (!catalog) return;
+      setPath(catalog, path, value);
+      if (path === "name") { item.label = value; els.editorTitle.textContent = value || "编辑图床素材"; }
+      if (path === "url") { item.path = value; }
+      if (path === "provider") item.provider = value;
+      if (path === "status") item.status = value;
+      setDirty(true);
+      return;
+    }
     setPath(item, path, value);
     if (path === MODULES[state.module].titlePath) els.editorTitle.textContent = value || `编辑${MODULES[state.module].singular}`;
     setDirty(true);
@@ -481,6 +615,10 @@
     if (!state.site) return;
     const schema = MODULES[state.module];
     if (!schema.defaultItem) return;
+    if (state.module === "assets") {
+      openAssetLinkDialog(null);
+      return;
+    }
     const item = schema.defaultItem();
     item.id = uniqueId(state.module.replace(/s$/, ""), getPath(item, schema.titlePath));
     const collection = collectionFor();
@@ -489,6 +627,7 @@
     state.activeGroup = schema.groups[0].id;
     state.status = "all";
     setDirty(true);
+    refreshAssets();
     renderAll();
     requestAnimationFrame(() => els.form.querySelector("input, textarea, select")?.focus());
   }
@@ -505,22 +644,39 @@
     collectionFor().splice(state.selectedIndex + 1, 0, copy);
     state.selectedIndex += 1;
     setDirty(true);
+    refreshAssets();
     renderAll();
   }
 
   async function deleteItem() {
     const schema = MODULES[state.module];
     const item = selectedItem();
-    if (!item || schema.virtual) return;
+    if (!item) return;
+    if (state.module === "assets") {
+      if (!item.registered) return;
+      const message = item.usedBy
+        ? `“${item.label}”仍被以下内容引用：${item.usedBy}。删除只会移除素材登记，不会清空这些内容里的图片链接。`
+        : `将删除“${item.label}”的素材登记，图床上的图片不会被删除。`;
+      if (!await confirmAction("删除素材登记？", message, "删除登记")) return;
+      state.assetCatalog = state.assetCatalog.filter((asset) => asset.id !== item.catalogId);
+      state.selectedIndex = null;
+      refreshAssets();
+      setDirty(true);
+      renderAll();
+      return;
+    }
+    if (schema.virtual) return;
     const confirmed = await confirmAction("删除这条内容？", `将删除“${getPath(item, schema.titlePath) || item.id}”。保存后才会写入内容文件。`, "删除");
     if (!confirmed) return;
     collectionFor().splice(state.selectedIndex, 1);
     state.selectedIndex = null;
     setDirty(true);
+    refreshAssets();
     renderAll();
   }
 
   function moveItem(offset) {
+    if (state.module === "assets") return;
     const collection = collectionFor();
     const from = state.selectedIndex;
     const to = from + offset;
@@ -529,6 +685,7 @@
     collection.splice(to, 0, item);
     state.selectedIndex = to;
     setDirty(true);
+    refreshAssets();
     renderAll();
   }
 
@@ -537,9 +694,10 @@
     try {
       const payload = await request("/api/save", {
         method: "POST",
-        body: JSON.stringify({ site: state.site, credits: state.credits }),
+        body: JSON.stringify({ site: state.site, credits: state.credits, assets: state.assetCatalog }),
       });
-      state.assets = payload.assets || state.assets;
+      state.assetFiles = payload.files || state.assetFiles;
+      refreshAssets();
       setDirty(false);
       renderModuleTabs();
       configureMode();
@@ -556,7 +714,7 @@
     try {
       const result = await request("/api/validate", {
         method: "POST",
-        body: JSON.stringify({ site: state.site, credits: state.credits }),
+        body: JSON.stringify({ site: state.site, credits: state.credits, assets: state.assetCatalog }),
       });
       if (openDialog) showValidation(result);
       return result;
@@ -639,7 +797,7 @@
     try {
       const result = await request("/api/publish", {
         method: "POST",
-        body: JSON.stringify({ site: state.site, credits: state.credits }),
+        body: JSON.stringify({ site: state.site, credits: state.credits, assets: state.assetCatalog }),
       });
       toast(`发布完成：${result.publishedItems} 条内容`, "success", 6000);
     } catch (error) {
@@ -653,7 +811,8 @@
       try {
         const path = await remote.upload(file);
         updateSelected(targetPath, path);
-        state.assets = remote.assets(state.site, state.credits);
+        state.assetFiles = remote.fileAssets();
+        refreshAssets();
         renderEditor(); renderModuleTabs(); renderTable();
         toast("图片已暂存，提交审核时一起上传 GitHub");
       } catch (error) { toast(error.message, "error"); }
@@ -675,13 +834,133 @@
         body: JSON.stringify({ fileName: file.name, dataUrl }),
       });
       updateSelected(targetPath, result.path);
-      state.assets = result.assets;
+      state.assetFiles = result.files || state.assetFiles;
+      refreshAssets();
       renderEditor();
       renderModuleTabs();
       toast(`图片已放入 ${result.path}`, "success");
     } catch (error) {
       toast(error.message, "error", 7000);
     }
+  }
+
+  function chooseAsset(path) {
+    if (!state.pickerTargetPath) return;
+    const asset = state.assets.find((item) => item.path === path);
+    updateSelected(state.pickerTargetPath, path);
+    if (state.module === "photos" && state.pickerTargetPath === "src" && !selectedItem()?.alt && asset?.alt) updateSelected("alt", asset.alt);
+    refreshAssets();
+    $("asset-picker-dialog").close();
+    state.pickerTargetPath = null;
+    renderEditor();
+    renderTable();
+    renderModuleTabs();
+    toast("已引用素材", "success");
+  }
+
+  function renderAssetPicker() {
+    const query = $("asset-picker-search").value.trim().toLowerCase();
+    const rows = state.assets.filter((item) => item.path && item.status !== "archived" && [item.label, item.path, item.provider, item.kind].some((value) => String(value || "").toLowerCase().includes(query)));
+    const grid = $("asset-picker-grid");
+    grid.replaceChildren();
+    rows.forEach((item) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "asset-picker-card";
+      button.dataset.assetPath = item.path;
+      const image = document.createElement("img");
+      image.src = resolveAssetUrl(item.path);
+      image.alt = "";
+      image.loading = "lazy";
+      const text = document.createElement("div");
+      const strong = document.createElement("strong");
+      strong.textContent = item.label || item.path;
+      const meta = document.createElement("span");
+      meta.textContent = `${item.provider || item.kind || "素材"}${item.usedBy ? " · 已引用" : ""}`;
+      text.append(strong, meta);
+      button.append(image, text);
+      grid.append(button);
+    });
+    $("asset-picker-empty").hidden = rows.length > 0;
+  }
+
+  function openAssetPicker(targetPath) {
+    state.pickerTargetPath = targetPath;
+    $("asset-picker-search").value = "";
+    renderAssetPicker();
+    $("asset-picker-dialog").showModal();
+    requestAnimationFrame(() => $("asset-picker-search").focus());
+  }
+
+  function updateLinkPreview() {
+    const url = $("asset-link-url").value.trim();
+    const preview = $("asset-link-preview");
+    preview.classList.remove("is-error");
+    $("asset-link-error").textContent = "";
+    if (!/^https:\/\/[^\s"'<>`]+$/i.test(url)) {
+      preview.hidden = true;
+      preview.removeAttribute("src");
+      return;
+    }
+    preview.hidden = false;
+    preview.src = url;
+  }
+
+  function openAssetLinkDialog(targetPath, seed = {}) {
+    state.linkTargetPath = targetPath;
+    $("asset-link-form").reset();
+    $("asset-link-provider").value = seed.provider || "123pan";
+    $("asset-link-name").value = seed.name || "";
+    $("asset-link-url").value = seed.url || (targetPath ? getPath(selectedItem(), targetPath) || "" : "");
+    $("asset-link-alt").value = seed.alt || "";
+    $("asset-link-note").value = seed.note || "";
+    $("asset-link-error").textContent = "";
+    updateLinkPreview();
+    $("asset-link-dialog").showModal();
+    requestAnimationFrame(() => ($("asset-link-name").value ? $("asset-link-url") : $("asset-link-name")).focus());
+  }
+
+  function closeAssetLinkDialog() {
+    $("asset-link-dialog").close();
+    state.linkTargetPath = null;
+  }
+
+  function registerAssetFromDialog(event) {
+    event.preventDefault();
+    const name = $("asset-link-name").value.trim();
+    const url = $("asset-link-url").value.trim();
+    const provider = $("asset-link-provider").value.trim();
+    const error = $("asset-link-error");
+    if (!name || !provider || !/^https:\/\/[^\s"'<>`]+$/i.test(url)) {
+      error.textContent = "请填写素材名称、服务商和有效的 HTTPS 图片直链。";
+      return;
+    }
+    let asset = state.assetCatalog.find((item) => item.url === url);
+    const alreadyRegistered = Boolean(asset);
+    if (!asset) {
+      asset = {
+        id: uniqueId("asset", name),
+        name,
+        url,
+        provider,
+        alt: $("asset-link-alt").value.trim(),
+        note: $("asset-link-note").value.trim(),
+        status: "active",
+      };
+      state.assetCatalog.unshift(asset);
+      setDirty(true);
+    }
+    if (state.linkTargetPath) {
+      updateSelected(state.linkTargetPath, asset.url);
+      if (state.module === "photos" && state.linkTargetPath === "src" && !selectedItem()?.alt && asset.alt) updateSelected("alt", asset.alt);
+    }
+    refreshAssets(asset.id);
+    $("asset-link-dialog").close();
+    if ($("asset-picker-dialog").open) $("asset-picker-dialog").close();
+    state.linkTargetPath = null;
+    state.pickerTargetPath = null;
+    renderAll();
+    toast(alreadyRegistered ? "该链接已登记，已使用现有素材" : "图床素材已登记", "success");
   }
 
   function showToast(message, tone = "", duration = 3500) {
@@ -765,20 +1044,45 @@
   });
 
   els.form.addEventListener("input", (event) => {
+    const catalogInput = event.target.closest("[data-catalog-field]");
+    if (catalogInput) {
+      updateSelected(catalogInput.dataset.catalogField, catalogInput.value);
+      return;
+    }
     const input = event.target.closest("[name]");
     if (!input) return;
     updateSelected(input.name, input.value);
   });
 
   els.form.addEventListener("change", (event) => {
+    const catalogInput = event.target.closest("[data-catalog-field]");
+    if (catalogInput) {
+      const item = selectedItem();
+      updateSelected(catalogInput.dataset.catalogField, catalogInput.value);
+      refreshAssets(item?.catalogId);
+      renderTable();
+      renderModuleTabs();
+      renderEditor();
+      return;
+    }
     const input = event.target.closest("[name]");
     if (!input) return;
     updateSelected(input.name, input.value);
+    refreshAssets();
     renderTable();
     renderStatusCounts();
   });
 
   els.form.addEventListener("click", (event) => {
+    const choose = event.target.closest("[data-pick-asset-for]");
+    if (choose) { openAssetPicker(choose.dataset.pickAssetFor); return; }
+    const register = event.target.closest("[data-register-for]");
+    if (register) { openAssetLinkDialog(register.dataset.registerFor); return; }
+    const registerUrl = event.target.closest("[data-register-asset-url]");
+    if (registerUrl) {
+      openAssetLinkDialog(null, { url: registerUrl.dataset.registerAssetUrl, name: registerUrl.dataset.registerAssetName });
+      return;
+    }
     const button = event.target.closest("[data-upload-for]");
     if (!button) return;
     state.uploadTargetPath = button.dataset.uploadFor;
@@ -787,6 +1091,24 @@
   });
 
   els.uploadInput.addEventListener("change", () => uploadAsset(els.uploadInput.files?.[0], state.uploadTargetPath));
+  $("asset-picker-grid").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-asset-path]");
+    if (button) chooseAsset(button.dataset.assetPath);
+  });
+  $("asset-picker-search").addEventListener("input", renderAssetPicker);
+  $("asset-picker-close").addEventListener("click", () => $("asset-picker-dialog").close());
+  $("asset-picker-cancel").addEventListener("click", () => $("asset-picker-dialog").close());
+  $("asset-picker-dialog").addEventListener("close", () => { if (!$("asset-link-dialog").open) state.pickerTargetPath = null; });
+  $("asset-picker-new").addEventListener("click", () => openAssetLinkDialog(state.pickerTargetPath));
+  $("asset-link-url").addEventListener("input", updateLinkPreview);
+  $("asset-link-preview").addEventListener("error", () => {
+    $("asset-link-preview").classList.add("is-error");
+    $("asset-link-error").textContent = "当前链接未能加载为图片，请确认复制的是公开直链。你仍可登记后再检查。";
+  });
+  $("asset-link-form").addEventListener("submit", registerAssetFromDialog);
+  $("asset-link-close").addEventListener("click", closeAssetLinkDialog);
+  $("asset-link-cancel").addEventListener("click", closeAssetLinkDialog);
+  $("asset-link-dialog").addEventListener("close", () => { state.linkTargetPath = null; });
   els.add.addEventListener("click", addItem);
   $("duplicate-btn").addEventListener("click", duplicateItem);
   $("delete-btn").addEventListener("click", deleteItem);
@@ -831,16 +1153,16 @@
     if (submitting || !state.site) return;
     submitting = true;
     try {
-      const result = remote.validate(state.site, state.credits);
+      const result = remote.validate(state.site, state.credits, state.assetCatalog);
       if (result.issues.some(i => i.level === "error")) { showValidation(result); return; }
-      if (!await confirmAction("提交内容审核？", "将把内容和暂存图片保存到 GitHub 内容更新分支，创建或更新 PR。合并到 hinskenny-site 后才会触发部署。", "提交审核")) return;
+      if (!await confirmAction("提交内容审核？", "将把内容和素材目录保存到 GitHub 内容更新分支，创建或更新 PR。合并到 hinskenny-site 后才会触发部署。", "提交审核")) return;
       $("github-connect-btn").disabled = true;
       $("disconnect-btn").disabled = true;
       document.querySelector(".workspace").inert = true;
       document.querySelector(".module-tabs").inert = true;
       document.querySelector(".top-actions").inert = true;
       $("sync-status").textContent = "正在提交 GitHub，请保持页面开启…";
-      const pr = await remote.submit(clone(state.site), clone(state.credits));
+      const pr = await remote.submit(clone(state.site), clone(state.credits), clone(state.assetCatalog));
       setDirty(false);
       $("sync-status").textContent = `已保存到 GitHub：${remote.branch}。等待你合并 PR #${pr.number}；尚未上线。`;
       toast("已提交审核", "success");
@@ -859,7 +1181,7 @@
 
   async function previewOnline() {
     if (!state.site) return;
-    const check = remote.validate(state.site, state.credits);
+    const check = remote.validate(state.site, state.credits, state.assetCatalog);
     if (check.issues.some(i => i.level === "error")) { showValidation(check); return; }
     try {
       const root = new URL("../", location.href);
@@ -907,7 +1229,8 @@
     if (!draft || !await confirmAction("恢复设备草稿？", `保存时间：${draft.savedAt}。将替换当前页面内容；提交时仍会检查远端版本。`, "恢复")) return;
     try {
       const data = remote.restore(draft);
-      state.site = data.site; state.credits = data.credits; state.assets = data.assets;
+      state.site = data.site; state.credits = data.credits; state.assetCatalog = data.catalog; state.assetFiles = data.files;
+      normalizeState();
       state.selectedIndex = null; setDirty(true); renderAll(); configureMode();
       $("sync-status").textContent = "已恢复设备草稿。已有 PR 的内容将继续提交到同一个分支；提交前会检查版本。";
     } catch (error) { toast(error.message, "error"); }
