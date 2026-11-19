@@ -1,1 +1,11 @@
-[]
+[
+  {
+    "id": "asset-test",
+    "name": "图床链接test",
+    "url": "https://1846580191.cdn.123clouddisk.com/1846580191/ynf1no03t0m000dlnm5qulgcadmyyfsaDIYxAqJ1Dde2DGxwAwewDa==.png",
+    "provider": "123pan",
+    "alt": "",
+    "note": "",
+    "status": "active"
+  }
+]
