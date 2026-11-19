@@ -197,6 +197,11 @@ window.SITE = {
   ],
   "photos": [
     {
+      "id": "photo-mwnx6chr",
+      "src": "https://1846580191.cdn.123clouddisk.com/1846580191/ynf1no03t0m000dlnm5qulgcadmyyfsaDIYxAqJ1Dde2DGxwAwewDa==.png",
+      "caption": "新图片"
+    },
+    {
       "id": "photo-mwl2rfk9",
       "src": "images/studio-926d3782-c463-4061-a59e-5822311a4dc8.png",
       "caption": "新图片2",
