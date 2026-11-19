@@ -197,9 +197,15 @@ window.SITE = {
   ],
   "photos": [
     {
+      "id": "photo-mwnxbzo5",
+      "src": "https://1846580191.cdn.123clouddisk.com/1846580191/yk6baz03t0n000dlnm5sswwy8x2ua0cuDIYxAqJ1Dde2DGxwAwewDa==.png",
+      "caption": "新图片"
+    },
+    {
       "id": "photo-mwnx6chr",
       "src": "https://1846580191.cdn.123clouddisk.com/1846580191/ynf1no03t0m000dlnm5qulgcadmyyfsaDIYxAqJ1Dde2DGxwAwewDa==.png",
-      "caption": "新图片"
+      "caption": "新图片",
+      "alt": "新图片"
     },
     {
       "id": "photo-mwl2rfk9",
