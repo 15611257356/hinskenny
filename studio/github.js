@@ -13,10 +13,29 @@
     const published = (items) => items.filter(x => (x._status || "published") === "published");
     return { site: clean(Object.fromEntries(Object.entries(site).map(([k, v]) => [k, Array.isArray(v) ? published(v) : v]))), credits: clean(published(credits)) };
   }
-  function validate(site, credits, paths) {
+  function validate(site, credits, assets, paths) {
     const issues = []; let checked = 0;
     const issue = (level, location, message) => issues.push({ level, location, message });
     const ids = new Set();
+    const registeredUrls = new Set();
+    if (!Array.isArray(assets)) {
+      issue("error", "素材库", "素材目录必须是数组");
+      assets = [];
+    }
+    for (const asset of assets) {
+      checked++;
+      const location = `素材库 · ${asset?.name || asset?.id || "未命名"}`;
+      if (!asset || typeof asset !== "object" || Array.isArray(asset)) { issue("error", "素材库", "素材格式错误"); continue; }
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(asset.id || "")) issue("error", location, "素材 ID 格式错误");
+      if (ids.has(asset.id)) issue("error", location, "唯一 ID 重复");
+      ids.add(asset.id);
+      if (!asset.name?.trim()) issue("error", location, "缺少素材名称");
+      if (!asset.provider?.trim()) issue("error", location, "缺少图床服务商");
+      if (!/^https:\/\/[^\s"'<>`]+$/i.test(asset.url || "")) issue("error", location, "图片需要有效的 HTTPS 地址");
+      if (registeredUrls.has(asset.url)) issue("error", location, "图片地址重复登记");
+      if (asset.url) registeredUrls.add(asset.url);
+      if (!['active', 'archived'].includes(asset.status || "active")) issue("error", location, "素材状态无效");
+    }
     for (const [key, schema] of Object.entries(window.STUDIO_SCHEMAS.MODULES)) {
       if (schema.virtual) continue;
       const items = key === "credits" ? credits : site?.[schema.collection];
@@ -40,7 +59,8 @@
           if (field.type === "url" && (!/^https?:\/\//i.test(value) || /[\s"'<>`]/.test(value))) issue("error", location, `${field.label}需要有效的 HTTP(S) 地址`);
           if (field.type === "asset") {
             if (/^https?:\/\//i.test(value)) {
-              if (/[\s"'<>`]/.test(value)) issue("error", location, "图片地址格式错误");
+              if (!/^https:\/\/[^\s"'<>`]+$/i.test(value)) issue("error", location, "图片需要有效的 HTTPS 地址");
+              else if (!registeredUrls.has(value)) issue("warning", location, "图片外链尚未登记到素材库");
             } else if (!/^images\/[\w./-]+$/.test(value) || value.split("/").includes("..") || (paths && !paths.has(value))) issue("error", location, `找不到有效图片：${value}`);
           }
         }
@@ -83,24 +103,20 @@
     async load() {
       const sha = await this.ref(BASE);
       const commit = await this.api(`/git/commits/${sha}`);
-      const [site, credits, tree] = await Promise.all([
-        this.readFile("studio/content/site.json", sha), this.readFile("studio/content/credits.json", sha), this.api(`/git/trees/${commit.tree.sha}?recursive=1`),
+      const [site, credits, catalog, tree] = await Promise.all([
+        this.readFile("studio/content/site.json", sha), this.readFile("studio/content/credits.json", sha), this.readFile("studio/content/assets.json", sha), this.api(`/git/trees/${commit.tree.sha}?recursive=1`),
       ]);
       if (tree.truncated) throw new Error("仓库文件清单不完整，暂不能编辑");
       if (!site || !Array.isArray(credits) || Object.values(window.STUDIO_SCHEMAS.MODULES).some(s => !s.virtual && s.collection !== "credits" && !Array.isArray(site[s.collection]))) throw new Error("仓库内容格式错误");
       this.baseSha = sha; this.head = sha; this.branch = null; this.pr = null;
       this.files = tree.tree.filter(f => f.type === "blob").map(f => ({ path: f.path, size: f.size }));
       this.uploads = {};
-      return { site, credits, assets: this.assets(site, credits) };
+      if (!Array.isArray(catalog)) throw new Error("素材目录格式错误");
+      return { site, credits, catalog, files: this.fileAssets() };
     }
-    assets(site, credits) {
-      const usage = new Map();
-      const add = (path, label) => { if (path) usage.set(path, [...(usage.get(path) || []), label]); };
-      for (const [key, items] of Object.entries({ ...site, credits })) if (Array.isArray(items)) for (const item of items) {
-        for (const field of ["photo", "src", "cover", "file"]) add(item[field], `${key}：${item.title || item.name || item.caption || item.id}`);
-      }
-      const paths = new Set([...this.files.map(f => f.path).filter(p => /^images\/.+\.(png|jpe?g|webp|gif)$/i.test(p)), ...Object.keys(this.uploads), ...usage.keys()]);
-      return [...paths].map(path => ({ id: path, path, label: path.split("/").pop(), kind: this.uploads[path] ? "待提交图片" : /^https?:/.test(path) ? "远程图片" : "仓库图片", sizeLabel: this.uploads[path] ? `${Math.ceil(this.uploads[path].size / 1024)} KB` : "—", usedBy: (usage.get(path) || []).join("；") }));
+    fileAssets() {
+      const paths = new Set([...this.files.map(f => f.path).filter(p => /^images\/.+\.(png|jpe?g|webp|gif)$/i.test(p)), ...Object.keys(this.uploads)]);
+      return [...paths].map(path => ({ path, label: path.split("/").pop(), kind: this.uploads[path] ? "待提交图片" : "仓库图片", provider: this.uploads[path] ? "GitHub（待提交）" : "GitHub", sizeLabel: this.uploads[path] ? `${Math.ceil(this.uploads[path].size / 1024)} KB` : "—" }));
     }
     assetUrl(path) {
       if (this.uploads[path]) return this.uploads[path].dataUrl;
@@ -120,24 +136,24 @@
       this.uploads[path] = { dataUrl, size: file.size };
       return path;
     }
-    validate(site, credits) { return validate(site, credits, new Set([...this.files.map(f => f.path), ...Object.keys(this.uploads)])); }
-    saveDraft(site, credits) {
+    validate(site, credits, assets) { return validate(site, credits, assets, new Set([...this.files.map(f => f.path), ...Object.keys(this.uploads)])); }
+    saveDraft(site, credits, assets) {
       // Explicit allowlist: credentials never enter persistent storage.
-      const draft = { site, credits, baseSha: this.baseSha, head: this.head, branch: this.branch, pr: this.pr, files: this.files, uploads: this.uploads, savedAt: new Date().toISOString() };
+      const draft = { site, credits, assets, baseSha: this.baseSha, head: this.head, branch: this.branch, pr: this.pr, files: this.files, uploads: this.uploads, savedAt: new Date().toISOString() };
       try { localStorage.setItem(KEY, JSON.stringify(draft)); } catch { throw new Error("设备存储空间不足，草稿未保存。请保持页面开启并提交 GitHub"); }
     }
     draft() { try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch { return null; } }
     restore(draft) {
       if (!draft?.site || !Array.isArray(draft.credits) || !draft.baseSha || (draft.branch && !draft.branch.startsWith(PREFIX))) throw new Error("设备草稿格式错误");
       for (const key of ["baseSha", "head", "branch", "pr", "files", "uploads"]) this[key] = draft[key];
-      return { site: draft.site, credits: draft.credits, assets: this.assets(draft.site, draft.credits) };
+      return { site: draft.site, credits: draft.credits, catalog: Array.isArray(draft.assets) ? draft.assets : [], files: this.fileAssets() };
     }
-    async submit(site, credits) {
+    async submit(site, credits, assets) {
       if (this.busy) throw new Error("正在提交，请稍候");
       this.busy = true;
       try {
         if (!this.baseSha) throw new Error("请先读取 GitHub 内容");
-        if (this.validate(site, credits).issues.some(i => i.level === "error")) throw new Error("请先修复内容校验错误");
+        if (this.validate(site, credits, assets).issues.some(i => i.level === "error")) throw new Error("请先修复内容校验错误");
         if (await this.ref(BASE) !== this.baseSha) throw new Error("部署分支已更新。请保留设备草稿，重新载入最新内容后整理修改再提交");
         if (this.branch && !this.branch.startsWith(PREFIX)) throw new Error("只允许写入内容更新分支");
         if (this.pr) {
@@ -148,7 +164,7 @@
         const parent = await this.api(`/git/commits/${this.head}`);
         const data = publicData(site, credits);
         const tree = [
-          ["studio/content/site.json", json(site)], ["studio/content/credits.json", json(credits)],
+          ["studio/content/site.json", json(site)], ["studio/content/credits.json", json(credits)], ["studio/content/assets.json", json(assets)],
           ["data.js", `// 由内容工作台生成。\nwindow.SITE = ${json(data.site).trim()};\n`],
           ["credits.js", `// 由内容工作台生成。\nwindow.CREDITS = ${json(data.credits).trim()};\n`],
         ].map(([path, content]) => ({ path, mode: "100644", type: "blob", content }));
@@ -173,15 +189,15 @@
             catch (error) { if (await this.ref(this.branch).catch(() => null) !== commit.sha) throw error; }
           }
           this.head = commit.sha;
-          this.saveDraft(site, credits);
+          this.saveDraft(site, credits, assets);
         }
         if (!this.branch) throw new Error("没有需要提交的内容变化");
         // Retry finds an already-created PR instead of making duplicates.
         const prs = await this.api(`/pulls?state=open&base=${encodeURIComponent(BASE)}&head=${encodeURIComponent(REPO.split("/")[0] + ":" + this.branch)}`);
-        const pr = prs[0] || await this.api("/pulls", "POST", { title: `内容更新 · ${new Date().toISOString().slice(0, 10)}`, head: this.branch, base: BASE, body: "由 HinsKenny 内容工作台提交。\n\n请检查内容 JSON、图片和生成的 data.js / credits.js，确认后手动合并。草稿与归档条目不会进入主站生成数据。合并后由现有部署流程上线。" });
+        const pr = prs[0] || await this.api("/pulls", "POST", { title: `内容更新 · ${new Date().toISOString().slice(0, 10)}`, head: this.branch, base: BASE, body: "由 HinsKenny 内容工作台提交。\n\n请检查内容 JSON、素材目录和生成的 data.js / credits.js，确认后手动合并。草稿与归档条目不会进入主站生成数据。合并后由现有部署流程上线。" });
         this.pr = { number: pr.number, url: `https://github.com/${REPO}/pull/${pr.number}` };
         // A completed remote save stays successful even if device storage is full.
-        try { this.saveDraft(site, credits); } catch { /* The PR link remains available in this session. */ }
+        try { this.saveDraft(site, credits, assets); } catch { /* The PR link remains available in this session. */ }
         return this.pr;
       } finally { this.busy = false; }
     }

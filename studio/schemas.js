@@ -51,7 +51,7 @@
           { path: "intro", label: "人物简介", type: "textarea", required: true },
         ] },
         { id: "media", label: "照片", fields: [
-          { path: "photo", label: "人物照片", type: "asset", required: true, help: "可以填写 images/ 下的路径，或直接上传图片。" },
+          { path: "photo", label: "人物照片", type: "asset", required: true, help: "从素材库选择，或粘贴已公开的 HTTPS 图床直链。" },
         ] },
       ]),
     },
@@ -83,7 +83,7 @@
         { id: "media", label: "关联媒体", fields: [
           { path: "photo", label: "照片", type: "asset" },
           { path: "video", label: "B 站 BV 号", type: "text", pattern: "^BV[0-9A-Za-z]+$", help: "例如 BV1dJ411c7zq。" },
-          { path: "cover", label: "视频封面 URL", type: "url", help: "不填时会尝试复用糖点中相同 BV 号的封面。" },
+          { path: "cover", label: "视频封面", type: "asset", help: "不填时会尝试复用糖点中相同 BV 号的封面。" },
         ] },
         { id: "source", label: "出处", fields: [
           { path: "source.label", label: "出处名称", type: "text" },
@@ -119,7 +119,7 @@
         ] },
         { id: "media", label: "视频", fields: [
           { path: "video", label: "B 站 BV 号", type: "text", required: true, pattern: "^BV[0-9A-Za-z]+$" },
-          { path: "cover", label: "封面 URL", type: "url", required: true },
+          { path: "cover", label: "封面图片", type: "asset", required: true },
         ] },
         { id: "source", label: "来源", fields: [
           { path: "sourceUrl", label: "原始视频链接", type: "url", help: "不填写时主站会根据 BV 号自动生成 B 站链接。" },
@@ -137,21 +137,21 @@
         { label: "图片", path: "src", type: "image" },
         { label: "说明", path: "caption", primary: true },
         { label: "路径", path: "src" },
-        { label: "版权记录", path: "creditId" },
+        { label: "版权记录（可选）", path: "creditId" },
         { label: "状态", path: "_status", type: "status" },
       ],
       defaultItem: () => ({ id: "", src: "", caption: "新图片", alt: "", creditId: "", _status: "draft" }),
-      needsSource: (item) => !item.creditId,
+      needsSource: () => false,
       groups: groupsWithPublishing([
         { id: "image", label: "图片", fields: [
           { path: "src", label: "图片文件", type: "asset", required: true },
           { path: "caption", label: "图片说明", type: "text", required: true },
         ] },
         { id: "accessibility", label: "无障碍", fields: [
-          { path: "alt", label: "替代文本", type: "textarea-compact", required: true, help: "描述照片里真正可见的内容，不要只重复文件名。" },
+          { path: "alt", label: "替代文本（可选）", type: "textarea-compact", help: "可以稍后补充；留空时主站仍会使用图片说明。" },
         ] },
-        { id: "license", label: "授权", fields: [
-          { path: "creditId", label: "版权记录 ID", type: "text", required: true, help: "在“版权”板块新建记录后，把它的 ID 填在这里。" },
+        { id: "license", label: "版权（可选）", fields: [
+          { path: "creditId", label: "版权记录 ID（可选）", type: "text", help: "不影响保存和发布；以后整理版权资料时再关联即可。" },
         ] },
       ]),
     },
@@ -236,7 +236,7 @@
       needsSource: (item) => !item.source || !item.license,
       groups: groupsWithPublishing([
         { id: "image", label: "图片", fields: [
-          { path: "file", label: "本地图片", type: "asset", required: true },
+          { path: "file", label: "对应图片", type: "asset", required: true },
           { path: "title", label: "原始标题", type: "text", required: true },
         ] },
         { id: "license", label: "授权", fields: [
@@ -252,18 +252,18 @@
 
     assets: {
       label: "素材库",
-      singular: "素材",
+      singular: "图床素材",
       virtual: true,
       titlePath: "label",
-      searchPaths: ["label", "path", "kind", "usedBy"],
+      searchPaths: ["label", "path", "kind", "provider", "usedBy"],
       columns: [
         { label: "预览", path: "path", type: "image" },
         { label: "文件 / 地址", path: "label", primary: true },
         { label: "类型", path: "kind" },
-        { label: "大小", path: "sizeLabel" },
+        { label: "服务商", path: "provider" },
         { label: "引用位置", path: "usedBy", wrap: true },
       ],
-      defaultItem: null,
+      defaultItem: () => ({ id: "", name: "新图床素材", url: "", provider: "123pan", alt: "", note: "", status: "active" }),
       needsSource: () => false,
       groups: [],
     },

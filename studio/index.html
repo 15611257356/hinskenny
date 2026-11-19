@@ -164,6 +164,40 @@
     <iframe id="preview-frame" title="主站内容预览" sandbox="allow-scripts allow-popups" referrerpolicy="no-referrer"></iframe>
   </dialog>
 
+  <dialog id="asset-picker-dialog" class="asset-dialog">
+    <div class="dialog-head">
+      <div><p class="eyebrow">图片素材</p><h2>从素材库选择</h2></div>
+      <button class="icon-btn" id="asset-picker-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="asset-picker-toolbar">
+      <input id="asset-picker-search" type="search" placeholder="搜索名称、地址或服务商…" />
+      <button class="btn" id="asset-picker-new" type="button">登记图床链接</button>
+    </div>
+    <div class="asset-picker-grid" id="asset-picker-grid"></div>
+    <p class="asset-picker-empty" id="asset-picker-empty" hidden>没有符合条件的素材。</p>
+    <div class="dialog-actions"><button class="btn" id="asset-picker-cancel" type="button">取消</button></div>
+  </dialog>
+
+  <dialog id="asset-link-dialog" class="asset-dialog asset-link-dialog">
+    <form id="asset-link-form">
+      <div class="dialog-head">
+        <div><p class="eyebrow">手动上传后登记</p><h2>新增图床素材</h2></div>
+        <button class="icon-btn" id="asset-link-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <p class="dialog-note">请粘贴无需登录即可打开的 HTTPS 图片直链。工作台只保存链接，不会向图床上传文件。</p>
+      <div class="field-group">
+        <label class="field">素材名称 *<input id="asset-link-name" required maxlength="120" /></label>
+        <label class="field">公开图片链接 *<input id="asset-link-url" type="url" inputmode="url" required placeholder="https://…" /></label>
+        <label class="field">图床服务商 *<input id="asset-link-provider" required value="123pan" /></label>
+        <label class="field">默认替代文本<input id="asset-link-alt" maxlength="300" /></label>
+        <label class="field">备注<textarea id="asset-link-note" class="compact"></textarea></label>
+      </div>
+      <img id="asset-link-preview" class="asset-preview" alt="图床图片预览" hidden />
+      <p id="asset-link-error" class="field-error" role="alert"></p>
+      <div class="dialog-actions"><button class="btn" id="asset-link-cancel" type="button">取消</button><button class="btn primary" type="submit">登记并使用</button></div>
+    </form>
+  </dialog>
+
   <input id="asset-upload-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" hidden />
 
   <script src="schemas.js"></script>
